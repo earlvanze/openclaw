@@ -1387,8 +1387,9 @@ describe("promptModelAllowlist", () => {
     expect(optionValues(pickerOptions(multiselect as MockCallSource))).toEqual([
       "minimax/MiniMax-M2.7-highspeed",
       "zhipu/glm-4.5-air",
+      "openai/gpt-5.5",
     ]);
-    expect(result.models).toEqual(["minimax/MiniMax-M2.7-highspeed", "zhipu/glm-4.5-air"]);
+    expect(result.models).toEqual(["minimax/MiniMax-M2.7-highspeed", "zhipu/glm-4.5-air", "openai/gpt-5.5"]);
   });
 
   it("scopes the initial allowlist picker to the preferred provider", async () => {
@@ -1775,8 +1776,9 @@ describe("promptModelAllowlist", () => {
 
     expect(optionValues(pickerOptions(multiselect as MockCallSource))).toEqual([
       "vllm/meta-llama/Meta-Llama-3-8B-Instruct",
+      "openai/gpt-5.5",
     ]);
-    expect(result.models).toEqual(["vllm/meta-llama/Meta-Llama-3-8B-Instruct"]);
+    expect(result.models).toEqual(["vllm/meta-llama/Meta-Llama-3-8B-Instruct", "openai/gpt-5.5"]);
   });
 
   it("seeds existing model fallbacks into unscoped allowlist selections", async () => {
