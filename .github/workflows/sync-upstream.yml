@@ -1,0 +1,91 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"   # every 4 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}  # needs push rights; fall back to GITHUB_TOKEN if PAT absent
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/openclaw/openclaw.git || true
+          git fetch upstream --tags
+
+      - name: Get latest stable release
+        id: release
+        run: |
+          set -euo pipefail
+          # Find the latest non-prerelease tag from upstream
+          latest=$(git tag -l --sort=-version:refname upstream/v* 2>/dev/null \
+            | sed 's|upstream/||' \
+            | while read -r tag; do
+                # Check if this tag is a pre-release on GitHub
+                is_prerelease=$(gh release view "$tag" -R openclaw/openclaw --json isPrerelease -q '.isPrerelease' 2>/dev/null || echo "true")
+                if [ "$is_prerelease" = "false" ]; then
+                  echo "$tag"
+                  break
+                fi
+              done)
+          if [ -z "$latest" ]; then
+            echo "No stable release found; exiting"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if already synced
+        if: steps.release.outputs.skip != 'true'
+        id: check
+        run: |
+          set -euo pipefail
+          current=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "${{ steps.release.outputs.latest }}" ]; then
+            echo "Already at latest; nothing to do"
+            echo "sync_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sync_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync to upstream release tag
+        if: steps.check.outputs.sync_needed == 'true'
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.latest }}"
+          git checkout -B sync-${tag} "upstream/${tag}"
+          git push origin "sync-${tag}" --force
+
+      - name: Create PR to main
+        if: steps.check.outputs.sync_needed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+          base: main
+          branch: sync-${{ steps.release.outputs.latest }}
+          delete-branch: true
+          title: "sync: openclaw/openclaw ${{ steps.release.outputs.latest }}"
+          body: |
+            Automated sync from [openclaw/openclaw](https://github.com/openclaw/openclaw) release `${{ steps.release.outputs.latest }}`.
+
+            Previous version: `${{ steps.check.outputs.current }}`
+            New version: `${{ steps.release.outputs.latest }}`
+
+            This PR merges the upstream release tag into `main`.
+          labels: |
+            upstream-sync
