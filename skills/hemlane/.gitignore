@@ -1,0 +1,6 @@
+*.har
+*.pyc
+__pycache__/
+private/
+*.auth.json
+*auth*.json
